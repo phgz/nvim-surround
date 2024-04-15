@@ -28,8 +28,19 @@ M.insert_surround = function(args)
         return
     end
 
-    buffer.insert_text(curpos, delimiters[2])
-    buffer.insert_text(curpos, delimiters[1])
+    if args.line_mode then
+        buffer.insert_text(curpos, delimiters[2])
+        buffer.insert_text(curpos, delimiters[1])
+    else
+        vim.api.nvim_feedkeys(
+            delimiters[1][1]
+                .. delimiters[2][1]
+                .. string.rep(vim.keycode("<C-g>") .. "U" .. vim.keycode("<left>"), #delimiters[2][1]),
+            "n",
+            false
+        )
+    end
+
     buffer.set_curpos({ curpos[1] + #delimiters[1] - 1, curpos[2] + #delimiters[1][#delimiters[1]] })
     -- Indent the cursor to the correct level, if added line-wise
     curpos = buffer.get_curpos()
@@ -43,7 +54,7 @@ M.insert_surround = function(args)
 end
 
 -- Holds the current position of the cursor, since calling opfunc will erase it.
-M.normal_curpos = nil
+M.old_pos = nil
 -- Detects if plugin is currently prompting the user for a motion / delimiter.
 M.pending_surround = false
 -- Add delimiters around a motion.
@@ -54,7 +65,7 @@ M.normal_surround = function(args)
     if not args.selection then
         -- Clear the normal cache (since it was user-called)
         cache.normal = { line_mode = args.line_mode }
-        M.normal_curpos = buffer.get_curpos()
+        M.old_pos = buffer.get_curpos()
         M.pending_surround = true
 
         vim.go.operatorfunc = "v:lua.require'nvim-surround'.normal_callback"
@@ -68,7 +79,7 @@ M.normal_surround = function(args)
     buffer.insert_text(first_pos, args.delimiters[1])
     buffer.restore_curpos({
         first_pos = first_pos,
-        old_pos = M.normal_curpos,
+        old_pos = M.old_pos,
     })
 
     if args.line_mode then
@@ -145,13 +156,13 @@ M.visual_surround = function(args)
 end
 
 -- Delete a surrounding delimiter pair, if it exists.
----@param args { del_char: string, curpos: position }|nil
+---@param args { del_char: string , line_mode: boolean }|nil
 ---@return "g@l"|nil
 M.delete_surround = function(args)
     -- Call the operatorfunc if it has not been called yet
-    if not args then
+    if not args or not args.del_char then
         -- Clear the delete cache (since it was user-called)
-        cache.delete = {}
+        cache.delete = args and { line_mode = args.line_mode } or {}
 
         vim.go.operatorfunc = "v:lua.require'nvim-surround'.delete_callback"
         return "g@l"
@@ -161,6 +172,12 @@ M.delete_surround = function(args)
     local selections = utils.get_nearest_selections(args.del_char, "delete")
 
     if selections then
+        if cache.delete.line_mode and not vim.deep_equal(selections.left, selections.right) then
+            selections.right.first_pos[2] = 1
+            selections.right.last_pos[2] = vim.fn.col({ selections.right.last_pos[1], "$" }) - 1
+            selections.left.first_pos[2] = 1
+            selections.left.last_pos[2] = vim.fn.col({ selections.left.last_pos[1], "$" }) - 1
+        end
         -- Delete the right selection first to ensure selection positions are correct
         buffer.delete_selection(selections.right)
         buffer.delete_selection(selections.left)
@@ -170,7 +187,7 @@ M.delete_surround = function(args)
         )
         buffer.restore_curpos({
             first_pos = selections.left.first_pos,
-            old_pos = args.curpos,
+            old_pos = M.old_pos,
         })
     end
 
@@ -178,7 +195,7 @@ M.delete_surround = function(args)
 end
 
 -- Change a surrounding delimiter pair, if it exists.
----@param args { curpos: position, del_char: string, add_delimiters: add_func, line_mode: boolean }
+---@param args { del_char: string, add_delimiters: add_func, line_mode: boolean }
 ---@return "g@l"|nil
 M.change_surround = function(args)
     -- Call the operatorfunc if it has not been called yet
@@ -190,7 +207,7 @@ M.change_surround = function(args)
         return "g@l"
     end
 
-    buffer.set_curpos(args.curpos)
+    buffer.set_curpos(M.old_pos)
     -- Get the selections to change, as well as the delimiters to replace those selections
     local selections = utils.get_nearest_selections(args.del_char, "change")
     local delimiters = args.add_delimiters()
@@ -222,7 +239,7 @@ M.change_surround = function(args)
         buffer.change_selection(selections.left, delimiters[1])
         buffer.restore_curpos({
             first_pos = selections.left.first_pos,
-            old_pos = args.curpos,
+            old_pos = M.old_pos,
         })
 
         if args.line_mode then
@@ -242,7 +259,7 @@ end
 
 ---@param mode "char"|"line"|"block"
 M.normal_callback = function(mode)
-    buffer.restore_curpos({ old_pos = M.normal_curpos })
+    buffer.restore_curpos({ old_pos = M.old_pos })
     -- Adjust the ] mark if the operator was in line-mode, e.g. `ip` or `3j`
     if mode == "line" then
         local first_pos = buffer.get_mark("[")
@@ -301,7 +318,7 @@ end
 
 M.delete_callback = function()
     -- Save the current position of the cursor
-    local curpos = buffer.get_curpos()
+    M.old_pos = buffer.get_curpos()
     -- Get a character input if not cached
     cache.delete.char = cache.delete.char or input.get_char()
     if not cache.delete.char then
@@ -310,13 +327,13 @@ M.delete_callback = function()
 
     M.delete_surround({
         del_char = cache.delete.char,
-        curpos = curpos,
+        line_mode = cache.delete.line_mode,
     })
 end
 
 M.change_callback = function()
     -- Save the current position of the cursor
-    local curpos = buffer.get_curpos()
+    M.old_pos = buffer.get_curpos()
     if not cache.change.del_char or not cache.change.add_delimiters then
         local del_char = config.get_alias(input.get_char())
         local change = config.get_change(del_char)
@@ -360,7 +377,6 @@ M.change_callback = function()
         }
     end
     local args = vim.deepcopy(cache.change)
-    args.curpos = curpos
     M.change_surround(args) ---@diagnostic disable-line: param-type-mismatch
 end
 
