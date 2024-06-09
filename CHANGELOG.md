@@ -1,5 +1,19 @@
 # Changelog
 
+## [2.2.0](https://github.com/kylechui/nvim-surround/compare/v2.1.11...v2.2.0) (2024-06-08)
+
+
+### Features
+
+* Improve `move_cursor`. ([#334](https://github.com/kylechui/nvim-surround/issues/334)) ([ef592b5](https://github.com/kylechui/nvim-surround/commit/ef592b5c4c107ae99f5d71946da15fb1ed9bcf72))
+
+## [2.1.11](https://github.com/kylechui/nvim-surround/compare/v2.1.10...v2.1.11) (2024-06-06)
+
+
+### Bug Fixes
+
+* UTF-8 characters in surround table. ([#333](https://github.com/kylechui/nvim-surround/issues/333)) ([f93d56d](https://github.com/kylechui/nvim-surround/commit/f93d56d423eb4ffd6a4d4d864c9d3a8fb25809a7))
+
 ## [2.1.10](https://github.com/kylechui/nvim-surround/compare/v2.1.9...v2.1.10) (2024-05-30)
 
 

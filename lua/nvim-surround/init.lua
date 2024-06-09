@@ -75,12 +75,16 @@ M.normal_surround = function(args)
     local first_pos = args.selection.first_pos
     local last_pos = { args.selection.last_pos[1], args.selection.last_pos[2] + 1 }
 
+    local sticky_mark = buffer.set_extmark(M.old_pos)
     buffer.insert_text(last_pos, args.delimiters[2])
     buffer.insert_text(first_pos, args.delimiters[1])
+
     buffer.restore_curpos({
         first_pos = first_pos,
+        sticky_pos = buffer.get_extmark(sticky_mark),
         old_pos = M.old_pos,
     })
+    buffer.del_extmark(sticky_mark)
 
     if args.line_mode then
         config.get_opts().indent_lines(first_pos[1], last_pos[1] + #args.delimiters[1] + #args.delimiters[2] - 2)
@@ -103,6 +107,7 @@ M.visual_surround = function(args)
         return
     end
 
+    local sticky_mark = buffer.set_extmark(args.curpos)
     if vim.fn.visualmode() == "\22" then -- Visual block mode case (add delimiters to every line)
         if vim.o.selection == "exclusive" then
             last_pos[2] = last_pos[2] - 1
@@ -155,8 +160,10 @@ M.visual_surround = function(args)
     config.get_opts().indent_lines(first_pos[1], last_pos[1] + #delimiters[1] + #delimiters[2] - 2)
     buffer.restore_curpos({
         first_pos = first_pos,
+        sticky_pos = buffer.get_extmark(sticky_mark),
         old_pos = args.curpos,
     })
+    buffer.del_extmark(sticky_mark)
 end
 
 -- Delete a surrounding delimiter pair, if it exists.
@@ -182,17 +189,21 @@ M.delete_surround = function(args)
             selections.left.first_pos[2] = 1
             selections.left.last_pos[2] = vim.fn.col({ selections.left.last_pos[1], "$" }) - 1
         end
+        local sticky_mark = buffer.set_extmark(M.old_pos)
         -- Delete the right selection first to ensure selection positions are correct
         buffer.delete_selection(selections.right)
         buffer.delete_selection(selections.left)
+
         config.get_opts().indent_lines(
             selections.left.first_pos[1],
             selections.left.first_pos[1] + selections.right.first_pos[1] - selections.left.last_pos[1]
         )
         buffer.restore_curpos({
             first_pos = selections.left.first_pos,
+            sticky_pos = buffer.get_extmark(sticky_mark),
             old_pos = M.old_pos,
         })
+        buffer.del_extmark(sticky_mark)
     end
 
     cache.set_callback("v:lua.require'nvim-surround'.delete_callback")
@@ -238,13 +249,16 @@ M.change_surround = function(args)
             selections.right.first_pos[2] = space_end + 1
         end
 
+        local sticky_mark = buffer.set_extmark(M.old_pos)
         -- Change the right selection first to ensure selection positions are correct
         buffer.change_selection(selections.right, delimiters[2])
         buffer.change_selection(selections.left, delimiters[1])
         buffer.restore_curpos({
             first_pos = selections.left.first_pos,
+            sticky_pos = buffer.get_extmark(sticky_mark),
             old_pos = M.old_pos,
         })
+        buffer.del_extmark(sticky_mark)
 
         if args.line_mode then
             local first_pos = selections.left.first_pos
