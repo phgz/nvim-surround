@@ -114,9 +114,11 @@ local function add(object)
         local offsets = { col_offset = 0, row_offset = 0 }
 
         if cache.normal.line_mode then
-            local two_first_lines_indents = vim.iter.map(function(line)
-                return line:match("^%s*")
-            end, buffer.get_lines(selection_start[1], selection_start[1] + 1))
+            local two_first_lines_indents = vim.iter(buffer.get_lines(selection_start[1], selection_start[1] + 1))
+                :map(function(line)
+                    return line:match("^%s*")
+                end)
+                :totable()
 
             offsets.row_offset = 1
             -- If we are on an empty line, the indent of the second line can be less than the surround's
