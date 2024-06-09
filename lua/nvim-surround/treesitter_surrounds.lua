@@ -63,7 +63,7 @@ local function add(object)
 
     ---@type delimiters_params
     local delimiters = filetypes[vim.bo.filetype][object .. "_delimiters"]()
-    local cursor_pos = buffer.get_curpos()
+    local cursor_pos = nvim_surround.old_pos
     local user_opts = config.get_opts()
     local current_line_is_empty = buffer.get_line(cursor_pos[1]) == ""
 
@@ -99,7 +99,7 @@ local function add(object)
         return delimiters.pair
     end
 
-    if user_opts.move_cursor then
+    if user_opts.move_cursor == "begin" then
         buffer.mark_jump()
         if current_line_is_empty then
             vim.defer_fn(function()
@@ -109,6 +109,7 @@ local function add(object)
         return delimiters.pair
     end
 
+    -- "sticky" or false
     vim.defer_fn(function()
         ---@type offsets
         local offsets = { col_offset = 0, row_offset = 0 }
