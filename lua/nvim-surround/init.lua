@@ -1,26 +1,24 @@
-local buffer = require("nvim-surround.buffer")
-local cache = require("nvim-surround.cache")
-local config = require("nvim-surround.config")
-local input = require("nvim-surround.input")
-local utils = require("nvim-surround.utils")
-
 local M = {}
 
 -- Setup the plugin with user-defined options.
 ---@param user_opts user_options|nil The user options.
 M.setup = function(user_opts)
-    config.setup(user_opts)
+    require("nvim-surround.config").setup(user_opts)
 end
 
 -- Configure the plugin on a per-buffer basis.
 ---@param buffer_opts user_options|nil The buffer-local options.
 M.buffer_setup = function(buffer_opts)
-    config.buffer_setup(buffer_opts)
+    require("nvim-surround.config").buffer_setup(buffer_opts)
 end
 
 -- Add delimiters around the cursor, in insert mode.
 ---@param args { line_mode: boolean } Whether or not the delimiters should get put on new lines.
 M.insert_surround = function(args)
+    local config = require("nvim-surround.config")
+    local buffer = require("nvim-surround.buffer")
+    local input = require("nvim-surround.input")
+
     local char = input.get_char()
     local curpos = buffer.get_curpos()
     local delimiters = config.get_delimiters(char, args.line_mode)
@@ -39,6 +37,7 @@ M.insert_surround = function(args)
             "n",
             false
         )
+        return
     end
 
     buffer.set_curpos({ curpos[1] + #delimiters[1] - 1, curpos[2] + #delimiters[1][#delimiters[1]] })
@@ -61,6 +60,10 @@ M.pending_surround = false
 ---@param args { selection: selection, delimiters: delimiter_pair, line_mode: boolean }
 ---@return "g@"|nil
 M.normal_surround = function(args)
+    local config = require("nvim-surround.config")
+    local buffer = require("nvim-surround.buffer")
+    local cache = require("nvim-surround.cache")
+
     -- Call the operatorfunc if it has not been called yet
     if not args.selection then
         -- Clear the normal cache (since it was user-called)
@@ -95,6 +98,10 @@ end
 -- Add delimiters around a visual selection.
 ---@param args { line_mode: boolean, curpos: position, curswant: number }
 M.visual_surround = function(args)
+    local config = require("nvim-surround.config")
+    local buffer = require("nvim-surround.buffer")
+    local input = require("nvim-surround.input")
+
     -- Get a character and selection from the user
     local ins_char = input.get_char()
 
@@ -170,6 +177,11 @@ end
 ---@param args { del_char: string , line_mode: boolean }|nil
 ---@return "g@l"|nil
 M.delete_surround = function(args)
+    local config = require("nvim-surround.config")
+    local buffer = require("nvim-surround.buffer")
+    local cache = require("nvim-surround.cache")
+    local utils = require("nvim-surround.utils")
+
     -- Call the operatorfunc if it has not been called yet
     if not args or not args.del_char then
         -- Clear the delete cache (since it was user-called)
@@ -213,6 +225,11 @@ end
 ---@param args { del_char: string, add_delimiters: add_func, line_mode: boolean }
 ---@return "g@l"|nil
 M.change_surround = function(args)
+    local config = require("nvim-surround.config")
+    local buffer = require("nvim-surround.buffer")
+    local cache = require("nvim-surround.cache")
+    local utils = require("nvim-surround.utils")
+
     -- Call the operatorfunc if it has not been called yet
     if not args.del_char or not args.add_delimiters then
         -- Clear the change cache (since it was user-called)
@@ -277,6 +294,11 @@ end
 
 ---@param mode "char"|"line"|"block"
 M.normal_callback = function(mode)
+    local config = require("nvim-surround.config")
+    local buffer = require("nvim-surround.buffer")
+    local cache = require("nvim-surround.cache")
+    local input = require("nvim-surround.input")
+
     buffer.restore_curpos({ old_pos = M.old_pos })
     -- Adjust the ] mark if the operator was in line-mode, e.g. `ip` or `3j`
     if mode == "line" then
@@ -336,6 +358,10 @@ M.normal_callback = function(mode)
 end
 
 M.delete_callback = function()
+    local buffer = require("nvim-surround.buffer")
+    local cache = require("nvim-surround.cache")
+    local input = require("nvim-surround.input")
+
     -- Save the current position of the cursor
     M.old_pos = buffer.get_curpos()
     -- Get a character input if not cached
@@ -351,6 +377,12 @@ M.delete_callback = function()
 end
 
 M.change_callback = function()
+    local config = require("nvim-surround.config")
+    local buffer = require("nvim-surround.buffer")
+    local cache = require("nvim-surround.cache")
+    local input = require("nvim-surround.input")
+    local utils = require("nvim-surround.utils")
+
     -- Save the current position of the cursor
     M.old_pos = buffer.get_curpos()
     if not cache.change.del_char or not cache.change.add_delimiters then
