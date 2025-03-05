@@ -24,18 +24,8 @@ M.get_selection = function(node_types)
         node_types = { node_types }
     end
 
-    local ok, ts_utils = pcall(require, "nvim-treesitter.ts_utils")
-    if not ok then
-        return nil
-    end
     -- Find the root node of the given buffer
-    local root = ts_utils.get_node_at_cursor()
-    if not root then
-        return {}
-    end
-    while root:parent() do
-        root = root:parent()
-    end
+    local root = vim.treesitter.get_node():tree():root()
     -- DFS through the tree and find all nodes that have the given type
     local stack = { root }
     local nodes, selections_list = {}, {}
@@ -46,7 +36,7 @@ M.get_selection = function(node_types)
             -- Add the current node to the stack
             nodes[#nodes + 1] = cur
             -- Compute the node's selection and add it to the list
-            local range = { ts_utils.get_vim_range({ cur:range() }) }
+            local range = { utils.get_vim_range({ cur:range() }) }
             selections_list[#selections_list + 1] = {
                 left = {
                     first_pos = { range[1], range[2] },

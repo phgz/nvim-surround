@@ -1,7 +1,5 @@
 local utils = require("nvim-surround.utils")
-local ts_query = require("nvim-treesitter.query")
-local ts_utils = require("nvim-treesitter.ts_utils")
-local ts_parsers = require("nvim-treesitter.parsers")
+local ts_textobjects_shared = require("nvim-treesitter-textobjects.shared")
 
 local M = {}
 
@@ -19,15 +17,13 @@ M.get_node = function(selection)
     }
 
     -- Get the root node of the current tree
-    local lang_tree = ts_parsers.get_parser(0)
-    local tree = lang_tree:trees()[1]
-    local root = tree:root()
+    local root = vim.treesitter.get_node():tree():root()
     -- DFS through the tree and find all nodes that have the given type
     local stack = { root }
     while #stack > 0 do
         local cur = stack[#stack]
         -- If the current node's range is equal to the desired selection, return the node
-        if vim.deep_equal(range, { ts_utils.get_vim_range({ cur:range() }) }) then
+        if vim.deep_equal(range, { utils.get_vim_range({ cur:range() }) }) then
             return cur
         end
         -- Pop off of the stack
@@ -47,8 +43,8 @@ end
 M.filter_selection = function(sexpr, capture, parent_selection)
     local parent_node = M.get_node(parent_selection)
 
-    local range = { ts_utils.get_vim_range({ parent_node:range() }) }
-    local lang_tree = ts_parsers.get_parser(0)
+    local range = { utils.get_vim_range({ parent_node:range() }) }
+    local lang_tree = vim.treesitter.get_parser()
     local ok, parsed_query = pcall(function()
         return vim.treesitter.query.parse and vim.treesitter.query.parse(lang_tree:lang(), sexpr)
             or vim.treesitter.parse_query(lang_tree:lang(), sexpr)
@@ -60,7 +56,7 @@ M.filter_selection = function(sexpr, capture, parent_selection)
     for id, node in parsed_query:iter_captures(parent_node, 0, 0, -1) do
         local name = parsed_query.captures[id]
         if name == capture then
-            range = { ts_utils.get_vim_range({ node:range() }) }
+            range = { utils.get_vim_range({ node:range() }) }
             return {
                 first_pos = { range[1], range[2] },
                 last_pos = { range[3], range[4] },
@@ -76,30 +72,17 @@ end
 ---@return selection|nil @The selection of the capture.
 ---@nodiscard
 M.get_selection = function(capture, type)
-    -- Get a table of all nodes that match the query
-    local table_list = ts_query.get_capture_matches_recursively(0, capture, type)
-    -- Convert the list of nodes into a list of selections
-    local selections_list = {}
-    for _, tab in ipairs(table_list) do
-        local range = { ts_utils.get_vim_range({ tab.node:range() }) }
-        selections_list[#selections_list + 1] = {
-            left = {
-                first_pos = { range[1], range[2] },
-                last_pos = { range[3], range[4] },
-            },
-            right = {
-                first_pos = { range[3], range[4] + 1 },
-                last_pos = { range[3], range[4] },
-            },
-        }
+    local range6 = ts_textobjects_shared.textobject_at_point(capture, type)
+    if not range6 then
+        vim.notify("Failed to get textobject at point " .. capture, vim.log.levels.ERROR)
+        return
     end
-    -- Filter out the best pair of selections from the list
-    local best_selections = utils.filter_selections_list(selections_list)
-    return best_selections
-        and {
-            first_pos = best_selections.left.first_pos,
-            last_pos = best_selections.right.last_pos,
-        }
+    local range = { utils.get_vim_range(ts_textobjects_shared.torange4(range6)) }
+
+    return {
+        first_pos = { range[1], range[2] },
+        last_pos = { range[3], range[4] },
+    }
 end
 
 return M
