@@ -217,7 +217,11 @@ local function delete(object)
         -- We handle the cursor differently depending on if it's on the line which will
         -- replace the start position of the selection, or just a line that will get indented
         if cursor_pos[1] ~= regions_to_keep_origin[1] then
-            pos[2] = cursor_pos[2] - (regions_to_keep_origin[2] - node_selection_origin[2])
+            local _, node_selection_origin_indent = vim.text.indent(
+                0,
+                vim.api.nvim_buf_get_lines(0, node_selection_origin[1] - 1, node_selection_origin[1], true)[1]
+            )
+            pos[2] = cursor_pos[2] - (regions_to_keep_origin[2] - node_selection_origin_indent - 1)
         else
             pos[2] = node_selection.first_pos[2] + (cursor_pos[2] - regions_to_keep_origin[2])
         end
