@@ -164,7 +164,7 @@ end
 ---@return integer @The extmark ID.
 ---@nodiscard
 M.set_extmark = function(pos)
-    return vim.api.nvim_buf_set_extmark(0, M.namespace.extmark, pos[1] - 1, pos[2] - 1, {})
+    return vim.api.nvim_buf_set_extmark(0, M.namespace.extmark, pos[1] - 1, pos[2] - 1, { strict = false })
 end
 
 -- Deletes an extmark from the buffer.
