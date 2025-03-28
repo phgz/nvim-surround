@@ -192,7 +192,7 @@ M.delete_surround = function(args)
     -- Call the operatorfunc if it has not been called yet
     if not args or not args.del_char then
         -- Clear the delete cache (since it was user-called)
-        cache.delete = args and { line_mode = args.line_mode } or {}
+        cache.delete = args and { line_mode = args.line_mode, count = vim.v.count1 } or { count = vim.v.count1 }
 
         vim.go.operatorfunc = "v:lua.require'nvim-surround'.delete_callback"
         return "g@l"
@@ -238,7 +238,7 @@ M.change_surround = function(args)
     -- Call the operatorfunc if it has not been called yet
     if not args.del_char or not args.add_delimiters then
         -- Clear the change cache (since it was user-called)
-        cache.change = { line_mode = args.line_mode }
+        cache.change = { line_mode = args.line_mode, count = vim.v.count1 }
 
         vim.go.operatorfunc = "v:lua.require'nvim-surround'.change_callback"
         return "g@l"
@@ -247,45 +247,49 @@ M.change_surround = function(args)
     buffer.set_curpos(M.old_pos)
     -- Get the selections to change, as well as the delimiters to replace those selections
     local selections = utils.get_nearest_selections(args.del_char, "change")
-    local delimiters = args.add_delimiters()
-    if selections and delimiters then
-        -- Avoid adding any, and remove any existing whitespace after the
-        -- opening delimiter if only whitespace exists between it and the end
-        -- of the line. Avoid adding or removing leading whitespace before the
-        -- closing delimiter if only whitespace exists between it and the
-        -- beginning of the line.
+    local raw_delimiters = args.add_delimiters()
+    if not (selections and raw_delimiters) then
+        cache.set_callback("v:lua.require'nvim-surround'.change_callback")
+        return
+    end
 
-        local space_begin, space_end = buffer.get_line(selections.left.last_pos[1]):find("%s*$")
-        if space_begin - 1 <= selections.left.last_pos[2] then -- Whitespace is adjacent to opening delimiter
-            -- Trim trailing whitespace from opening delimiter
-            delimiters[1][#delimiters[1]] = delimiters[1][#delimiters[1]]:gsub("%s+$", "")
-            -- Grow selection end to include trailing whitespace, so it gets removed
-            selections.left.last_pos[2] = space_end
-        end
+    local delimiters = utils.normalize_delimiters(raw_delimiters)
+    -- Avoid adding any, and remove any existing whitespace after the
+    -- opening delimiter if only whitespace exists between it and the end
+    -- of the line. Avoid adding or removing leading whitespace before the
+    -- closing delimiter if only whitespace exists between it and the
+    -- beginning of the line.
 
-        space_begin, space_end = buffer.get_line(selections.right.first_pos[1]):find("^%s*")
-        if space_end + 1 >= selections.right.first_pos[2] then -- Whitespace is adjacent to closing delimiter
-            -- Trim leading whitespace from closing delimiter
-            delimiters[2][1] = delimiters[2][1]:gsub("^%s+", "")
-            -- Shrink selection beginning to exclude leading whitespace, so it remains unchanged
-            selections.right.first_pos[2] = space_end + 1
-        end
+    local space_begin, space_end = buffer.get_line(selections.left.last_pos[1]):find("%s*$")
+    if space_begin - 1 <= selections.left.last_pos[2] then -- Whitespace is adjacent to opening delimiter
+        -- Trim trailing whitespace from opening delimiter
+        delimiters[1][#delimiters[1]] = delimiters[1][#delimiters[1]]:gsub("%s+$", "")
+        -- Grow selection end to include trailing whitespace, so it gets removed
+        selections.left.last_pos[2] = space_end
+    end
 
-        local sticky_pos = buffer.with_extmark(M.old_pos, function()
-            buffer.change_selection(selections.right, delimiters[2])
-            buffer.change_selection(selections.left, delimiters[1])
-        end)
-        buffer.restore_curpos({
-            first_pos = selections.left.first_pos,
-            sticky_pos = sticky_pos,
-            old_pos = M.old_pos,
-        })
+    space_begin, space_end = buffer.get_line(selections.right.first_pos[1]):find("^%s*")
+    if space_end + 1 >= selections.right.first_pos[2] then -- Whitespace is adjacent to closing delimiter
+        -- Trim leading whitespace from closing delimiter
+        delimiters[2][1] = delimiters[2][1]:gsub("^%s+", "")
+        -- Shrink selection beginning to exclude leading whitespace, so it remains unchanged
+        selections.right.first_pos[2] = space_end + 1
+    end
 
-        if args.line_mode then
-            local first_line = selections.left.first_pos[1]
-            local last_line = selections.right.last_pos[1]
-            config.get_opts().indent_lines(first_line, last_line + #delimiters[1] + #delimiters[2] - 2)
-        end
+    local sticky_pos = buffer.with_extmark(M.old_pos, function()
+        buffer.change_selection(selections.right, delimiters[2])
+        buffer.change_selection(selections.left, delimiters[1])
+    end)
+    buffer.restore_curpos({
+        first_pos = selections.left.first_pos,
+        sticky_pos = sticky_pos,
+        old_pos = M.old_pos,
+    })
+
+    if args.line_mode then
+        local first_line = selections.left.first_pos[1]
+        local last_line = selections.right.last_pos[1]
+        config.get_opts().indent_lines(first_line, last_line + #delimiters[1] + #delimiters[2] - 2)
     end
 
     cache.set_callback("v:lua.require'nvim-surround'.change_callback")
@@ -373,10 +377,12 @@ M.delete_callback = function()
         return
     end
 
-    M.delete_surround({
-        del_char = cache.delete.char,
-        line_mode = cache.delete.line_mode,
-    })
+    for _ = 1, cache.delete.count do
+        M.delete_surround({
+            del_char = cache.delete.char,
+            line_mode = cache.delete.line_mode,
+        })
+    end
 end
 
 M.change_callback = function()
@@ -388,11 +394,18 @@ M.change_callback = function()
 
     -- Save the current position of the cursor
     M.old_pos = buffer.get_curpos()
-    if not cache.change.del_char or not cache.change.add_delimiters then
-        local del_char = config.get_alias(input.get_char())
-        local change = config.get_change(del_char)
+
+    local del_char = cache.change.del_char or config.get_alias(input.get_char())
+    local change = config.get_change(del_char)
+    if not (del_char and change) then
+        return
+    end
+
+    -- To handle number prefixing properly, we just run the replacement algorithm multiple times
+    for _ = 1, cache.change.count do
+        -- If at any point we are unable to find a surrounding pair to change, early exit
         local selections = utils.get_nearest_selections(del_char, "change")
-        if not (del_char and change and selections) then
+        if not selections then
             return
         end
 
@@ -406,13 +419,17 @@ M.change_callback = function()
             end
         end
 
-        -- Get the new surrounding pair, querying the user for more input if no replacement is provided
-        local ins_char, delimiters
-        if change and change.replacement then
-            delimiters = change.replacement()
-        else
-            ins_char = input.get_char()
-            delimiters = config.get_delimiters(ins_char, cache.change.line_mode)
+        -- Get the new surrounding delimiter pair, prioritizing any delimiters in the cache
+        -- NB: This must occur between drawing the highlights and clearing them, so the selections are properly
+        --     highlighted if the user is providing (blocking) input
+        local delimiters = cache.change.add_delimiters and cache.change.add_delimiters()
+        if not delimiters then
+            if change and change.replacement then
+                delimiters = delimiters or change.replacement()
+            else
+                local ins_char = input.get_char()
+                delimiters = delimiters or config.get_delimiters(ins_char, cache.change.line_mode)
+            end
         end
 
         -- Clear the highlights after getting the replacement surround
@@ -421,17 +438,23 @@ M.change_callback = function()
             return
         end
 
+        local add_delimiters = function()
+            return delimiters
+        end
         -- Set the cache
         cache.change = {
             del_char = del_char,
-            add_delimiters = function()
-                return delimiters
-            end,
+            add_delimiters = add_delimiters,
             line_mode = cache.change.line_mode,
+            count = cache.change.count,
         }
+        M.change_surround({
+            del_char = del_char,
+            add_delimiters = add_delimiters,
+            line_mode = cache.change.line_mode,
+            count = cache.change.count,
+        })
     end
-    local args = vim.deepcopy(cache.change)
-    M.change_surround(args) ---@diagnostic disable-line: param-type-mismatch
 end
 
 return M
